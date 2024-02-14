@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build go1.9
 // +build go1.9
 
-package trino
+package presto
 
 import (
 	"bytes"
@@ -61,7 +62,7 @@ func TestIntegrationInsecureTLS(t *testing.T) {
 }
 
 func testSimpleQuery(t *testing.T, dsn string) {
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}

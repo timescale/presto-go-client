@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package trino
+package presto
 
 import (
 	"context"
@@ -35,20 +35,20 @@ var (
 	pool     *dt.Pool
 	resource *dt.Resource
 
-	trinoImageTagFlag = flag.String(
-		"trino_image_tag",
+	prestoImageTagFlag = flag.String(
+		"presto_image_tag",
 		os.Getenv("TRINO_IMAGE_TAG"),
-		"Docker image tag used for the Trino server container",
+		"Docker image tag used for the Presto server container",
 	)
 	integrationServerFlag = flag.String(
-		"trino_server_dsn",
+		"presto_server_dsn",
 		os.Getenv("TRINO_SERVER_DSN"),
-		"dsn of the Trino server used for integration tests instead of starting a Docker container",
+		"dsn of the Presto server used for integration tests instead of starting a Docker container",
 	)
 	integrationServerQueryTimeout = flag.Duration(
-		"trino_query_timeout",
+		"presto_query_timeout",
 		5*time.Second,
-		"max duration for Trino queries to run before giving up",
+		"max duration for Presto queries to run before giving up",
 	)
 	noCleanup = flag.Bool(
 		"no_cleanup",
@@ -74,19 +74,19 @@ func TestMain(m *testing.M) {
 		if err != nil {
 			log.Fatalf("Failed to get working directory: %s", err)
 		}
-		name := "trino-go-client-tests"
+		name := "presto-go-client-tests"
 		var ok bool
 		resource, ok = pool.ContainerByName(name)
 
 		if !ok {
-			if *trinoImageTagFlag == "" {
-				*trinoImageTagFlag = "latest"
+			if *prestoImageTagFlag == "" {
+				*prestoImageTagFlag = "latest"
 			}
 			resource, err = pool.RunWithOptions(&dt.RunOptions{
 				Name:       name,
-				Repository: "trinodb/trino",
-				Tag:        *trinoImageTagFlag,
-				Mounts:     []string{wd + "/etc:/etc/trino"},
+				Repository: "prestodb/presto",
+				Tag:        *prestoImageTagFlag,
+				Mounts:     []string{wd + "/etc:/etc/presto"},
 			})
 			if err != nil {
 				log.Fatalf("Could not start resource: %s", err)
@@ -129,7 +129,7 @@ func integrationOpen(t *testing.T, dsn ...string) *sql.DB {
 	if len(dsn) > 0 {
 		target = dsn[0]
 	}
-	db, err := sql.Open("trino", target)
+	db, err := sql.Open("presto", target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func integrationOpen(t *testing.T, dsn ...string) *sql.DB {
 }
 
 // integration tests based on python tests:
-// https://github.com/trinodb/trino-python-client/tree/master/integration_tests
+// https://github.com/prestodb/presto-python-client/tree/master/integration_tests
 
 type nodesRow struct {
 	NodeID      string
@@ -486,13 +486,13 @@ func TestIntegrationQueryParametersSelect(t *testing.T) {
 			name:          "invalid string as bigint",
 			query:         "SELECT * FROM tpch.sf1.customer WHERE custkey=? LIMIT 2",
 			args:          []interface{}{"1"},
-			expectedError: errors.New(`trino: query failed (200 OK): "io.trino.spi.TrinoException: line 1:46: Cannot apply operator: bigint = varchar(1)"`),
+			expectedError: errors.New(`presto: query failed (200 OK): "io.presto.spi.PrestoException: line 1:46: Cannot apply operator: bigint = varchar(1)"`),
 		},
 		{
 			name:          "valid string as date",
 			query:         "SELECT * FROM tpch.sf1.lineitem WHERE shipdate=? LIMIT 2",
 			args:          []interface{}{"1995-01-27"},
-			expectedError: errors.New(`trino: query failed (200 OK): "io.trino.spi.TrinoException: line 1:47: Cannot apply operator: date = varchar(10)"`),
+			expectedError: errors.New(`presto: query failed (200 OK): "io.presto.spi.PrestoException: line 1:47: Cannot apply operator: date = varchar(10)"`),
 		},
 	}
 
@@ -611,11 +611,11 @@ func TestIntegrationUnsupportedHeader(t *testing.T) {
 	}{
 		{
 			query: "SET ROLE dummy",
-			err:   errors.New(`trino: query failed (200 OK): "io.trino.spi.TrinoException: line 1:1: Role 'dummy' does not exist"`),
+			err:   errors.New(`presto: query failed (200 OK): "io.presto.spi.PrestoException: line 1:1: Role 'dummy' does not exist"`),
 		},
 		{
 			query: "SET PATH dummy",
-			err:   errors.New(`trino: query failed (200 OK): "io.trino.spi.TrinoException: SET PATH not supported by client"`),
+			err:   errors.New(`presto: query failed (200 OK): "io.presto.spi.PrestoException: SET PATH not supported by client"`),
 		},
 	}
 	for _, c := range cases {

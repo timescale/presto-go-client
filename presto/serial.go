@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package trino
+package presto
 
 import (
 	"encoding/json"
@@ -28,74 +28,74 @@ type UnsupportedArgError struct {
 }
 
 func (e UnsupportedArgError) Error() string {
-	return fmt.Sprintf("trino: unsupported arg type: %s", e.t)
+	return fmt.Sprintf("presto: unsupported arg type: %s", e.t)
 }
 
 // Numeric is a string representation of a number, such as "10", "5.5" or in scientific form
 // If another string format is used it will error to serialise
 type Numeric string
 
-// trinoDate represents a Date type in Trino.
-type trinoDate struct {
+// prestoDate represents a Date type in Presto.
+type prestoDate struct {
 	year  int
 	month time.Month
 	day   int
 }
 
-// Date creates a representation of a Trino Date type.
-func Date(year int, month time.Month, day int) trinoDate {
-	return trinoDate{year, month, day}
+// Date creates a representation of a Presto Date type.
+func Date(year int, month time.Month, day int) prestoDate {
+	return prestoDate{year, month, day}
 }
 
-// trinoTime represents a Time type in Trino.
-type trinoTime struct {
+// prestoTime represents a Time type in Presto.
+type prestoTime struct {
 	hour       int
 	minute     int
 	second     int
 	nanosecond int
 }
 
-// Time creates a representation of a Trino Time type. To represent time with precision higher than nanoseconds, pass the value as a string and use a cast in the query.
+// Time creates a representation of a Presto Time type. To represent time with precision higher than nanoseconds, pass the value as a string and use a cast in the query.
 func Time(hour int,
 	minute int,
 	second int,
-	nanosecond int) trinoTime {
-	return trinoTime{hour, minute, second, nanosecond}
+	nanosecond int) prestoTime {
+	return prestoTime{hour, minute, second, nanosecond}
 }
 
-// trinoTimeTz represents a Time(9) With Timezone type in Trino.
-type trinoTimeTz time.Time
+// prestoTimeTz represents a Time(9) With Timezone type in Presto.
+type prestoTimeTz time.Time
 
-// TimeTz creates a representation of a Trino Time(9) With Timezone type.
+// TimeTz creates a representation of a Presto Time(9) With Timezone type.
 func TimeTz(hour int,
 	minute int,
 	second int,
 	nanosecond int,
-	location *time.Location) trinoTimeTz {
+	location *time.Location) prestoTimeTz {
 	// When reading a time, a nil location indicates UTC.
 	// However, passing nil to time.Date() panics.
 	if location == nil {
 		location = time.UTC
 	}
-	return trinoTimeTz(time.Date(0, 0, 0, hour, minute, second, nanosecond, location))
+	return prestoTimeTz(time.Date(0, 0, 0, hour, minute, second, nanosecond, location))
 }
 
-// Timestamp indicates we want a TimeStamp type WITHOUT a time zone in Trino from a Golang time.
-type trinoTimestamp time.Time
+// Timestamp indicates we want a TimeStamp type WITHOUT a time zone in Presto from a Golang time.
+type prestoTimestamp time.Time
 
-// Timestamp creates a representation of a Trino Timestamp(9) type.
+// Timestamp creates a representation of a Presto Timestamp(9) type.
 func Timestamp(year int,
 	month time.Month,
 	day int,
 	hour int,
 	minute int,
 	second int,
-	nanosecond int) trinoTimestamp {
-	return trinoTimestamp(time.Date(year, month, day, hour, minute, second, nanosecond, time.UTC))
+	nanosecond int) prestoTimestamp {
+	return prestoTimestamp(time.Date(year, month, day, hour, minute, second, nanosecond, time.UTC))
 }
 
-// Serial converts any supported value to its equivalent string for as a Trino parameter
-// See https://trino.io/docs/current/language/types.html
+// Serial converts any supported value to its equivalent string for as a Presto parameter
+// See https://presto.io/docs/current/language/types.html
 func Serial(v interface{}) (string, error) {
 	switch x := v.(type) {
 	case nil:
@@ -147,17 +147,17 @@ func Serial(v interface{}) (string, error) {
 	case string:
 		return "'" + strings.Replace(x, "'", "''", -1) + "'", nil
 
-		// TODO - []byte should probably be matched to 'VARBINARY' in trino
+		// TODO - []byte should probably be matched to 'VARBINARY' in presto
 	case []byte:
 		return "", UnsupportedArgError{"[]byte"}
 
-	case trinoDate:
+	case prestoDate:
 		return fmt.Sprintf("DATE '%04d-%02d-%02d'", x.year, x.month, x.day), nil
-	case trinoTime:
+	case prestoTime:
 		return fmt.Sprintf("TIME '%02d:%02d:%02d.%09d'", x.hour, x.minute, x.second, x.nanosecond), nil
-	case trinoTimeTz:
+	case prestoTimeTz:
 		return "TIME " + time.Time(x).Format("'15:04:05.999999999 Z07:00'"), nil
-	case trinoTimestamp:
+	case prestoTimestamp:
 		return "TIMESTAMP " + time.Time(x).Format("'2006-01-02 15:04:05.999999999'"), nil
 	case time.Time:
 		return "TIMESTAMP " + time.Time(x).Format("'2006-01-02 15:04:05.999999999 Z07:00'"), nil
@@ -165,7 +165,7 @@ func Serial(v interface{}) (string, error) {
 	case time.Duration:
 		return "", UnsupportedArgError{"time.Duration"}
 
-		// TODO - json.RawMesssage should probably be matched to 'JSON' in Trino
+		// TODO - json.RawMesssage should probably be matched to 'JSON' in Presto
 	case json.RawMessage:
 		return "", UnsupportedArgError{"json.RawMessage"}
 	}
@@ -186,11 +186,11 @@ func Serial(v interface{}) (string, error) {
 	}
 
 	if reflect.TypeOf(v).Kind() == reflect.Map {
-		// are Trino MAPs indifferent to order? Golang maps are, if Trino aren't then the two types can't be compatible
+		// are Presto MAPs indifferent to order? Golang maps are, if Presto aren't then the two types can't be compatible
 		return "", UnsupportedArgError{"map"}
 	}
 
-	// TODO - consider the remaining types in https://trino.io/docs/current/language/types.html (Row, IP, ...)
+	// TODO - consider the remaining types in https://presto.io/docs/current/language/types.html (Row, IP, ...)
 
 	return "", UnsupportedArgError{fmt.Sprintf("%T", v)}
 }

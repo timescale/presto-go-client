@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package trino
+package presto
 
 import (
 	"bytes"
@@ -43,7 +43,7 @@ func TestConfig(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	want := "http://foobar@localhost:8080?session_properties=query_priority%3D1&source=trino-go-client"
+	want := "http://foobar@localhost:8080?session_properties=query_priority%3D1&source=presto-go-client"
 
 	assert.Equal(t, want, dsn)
 }
@@ -58,7 +58,7 @@ func TestConfigSSLCertPath(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	want := "https://foobar@localhost:8080?SSLCertPath=cert.pem&session_properties=query_priority%3D1&source=trino-go-client"
+	want := "https://foobar@localhost:8080?SSLCertPath=cert.pem&session_properties=query_priority%3D1&source=presto-go-client"
 
 	assert.Equal(t, want, dsn)
 }
@@ -105,7 +105,7 @@ FKu5ZAlRfb2aYegr49DHhzoVAdInWQmP+5EZEUD1
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	want := "https://foobar@localhost:8080?SSLCert=" + url.QueryEscape(sslCert) + "&session_properties=query_priority%3D1&source=trino-go-client"
+	want := "https://foobar@localhost:8080?SSLCert=" + url.QueryEscape(sslCert) + "&session_properties=query_priority%3D1&source=presto-go-client"
 
 	assert.Equal(t, want, dsn)
 }
@@ -119,7 +119,7 @@ func TestExtraCredentials(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	want := "http://foobar@localhost:8080?extra_credentials=otherToken%3DoThErToKeN%2Ctoken%3DmYtOkEn&source=trino-go-client"
+	want := "http://foobar@localhost:8080?extra_credentials=otherToken%3DoThErToKeN%2Ctoken%3DmYtOkEn&source=presto-go-client"
 
 	assert.Equal(t, want, dsn)
 }
@@ -132,7 +132,7 @@ func TestConfigWithoutSSLCertPath(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	want := "https://foobar@localhost:8080?session_properties=query_priority%3D1&source=trino-go-client"
+	want := "https://foobar@localhost:8080?session_properties=query_priority%3D1&source=presto-go-client"
 
 	assert.Equal(t, want, dsn)
 }
@@ -143,7 +143,7 @@ func TestKerberosConfig(t *testing.T) {
 		SessionProperties:  map[string]string{"query_priority": "1"},
 		KerberosEnabled:    "true",
 		KerberosKeytabPath: "/opt/test.keytab",
-		KerberosPrincipal:  "trino/testhost",
+		KerberosPrincipal:  "presto/testhost",
 		KerberosRealm:      "example.com",
 		KerberosConfigPath: "/etc/krb5.conf",
 		SSLCertPath:        "/tmp/test.cert",
@@ -152,7 +152,7 @@ func TestKerberosConfig(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	want := "https://foobar@localhost:8090?KerberosConfigPath=%2Fetc%2Fkrb5.conf&KerberosEnabled=true&KerberosKeytabPath=%2Fopt%2Ftest.keytab&KerberosPrincipal=trino%2Ftesthost&KerberosRealm=example.com&SSLCertPath=%2Ftmp%2Ftest.cert&session_properties=query_priority%3D1&source=trino-go-client"
+	want := "https://foobar@localhost:8090?KerberosConfigPath=%2Fetc%2Fkrb5.conf&KerberosEnabled=true&KerberosKeytabPath=%2Fopt%2Ftest.keytab&KerberosPrincipal=presto%2Ftesthost&KerberosRealm=example.com&SSLCertPath=%2Ftmp%2Ftest.cert&session_properties=query_priority%3D1&source=presto-go-client"
 
 	assert.Equal(t, want, dsn)
 }
@@ -183,7 +183,7 @@ func TestConnErrorDSN(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.Name, func(t *testing.T) {
-			db, err := sql.Open("trino", tc.DSN)
+			db, err := sql.Open("presto", tc.DSN)
 			require.NoError(t, err)
 
 			_, err = db.Query("SELECT 1")
@@ -224,7 +224,7 @@ func TestRoundTripRetryQueryError(t *testing.T) {
 
 	t.Cleanup(ts.Close)
 
-	db, err := sql.Open("trino", ts.URL)
+	db, err := sql.Open("presto", ts.URL)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -242,7 +242,7 @@ func TestRoundTripCancellation(t *testing.T) {
 
 	t.Cleanup(ts.Close)
 
-	db, err := sql.Open("trino", ts.URL)
+	db, err := sql.Open("presto", ts.URL)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -263,7 +263,7 @@ func TestAuthFailure(t *testing.T) {
 
 	t.Cleanup(ts.Close)
 
-	db, err := sql.Open("trino", ts.URL)
+	db, err := sql.Open("presto", ts.URL)
 	require.NoError(t, err)
 
 	assert.NoError(t, db.Close())
@@ -281,14 +281,14 @@ func TestQueryForUsername(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		assert.NoError(t, db.Close())
 	})
 
-	rows, err := db.Query("SELECT current_user", sql.Named("X-Trino-User", string("TestUser")))
+	rows, err := db.Query("SELECT current_user", sql.Named("X-Presto-User", string("TestUser")))
 	require.NoError(t, err, "Failed executing query")
 	assert.NotNil(t, rows)
 
@@ -320,7 +320,7 @@ func TestQueryProgressWithCallback(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -329,7 +329,7 @@ func TestQueryProgressWithCallback(t *testing.T) {
 
 	callback := &TestQueryProgressCallback{}
 
-	_, err = db.Query("SELECT 2", sql.Named("X-Trino-Progress-Callback", callback))
+	_, err = db.Query("SELECT 2", sql.Named("X-Presto-Progress-Callback", callback))
 	assert.EqualError(t, err, ErrInvalidProgressCallbackHeader.Error(), "unexpected error")
 }
 
@@ -345,7 +345,7 @@ func TestQueryProgressWithCallbackPeriod(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -359,8 +359,8 @@ func TestQueryProgressWithCallbackPeriod(t *testing.T) {
 	progressUpdaterPeriod, err := time.ParseDuration("1ms")
 
 	rows, err := db.Query("SELECT 2",
-		sql.Named("X-Trino-Progress-Callback", progressUpdater),
-		sql.Named("X-Trino-Progress-Callback-Period", progressUpdaterPeriod),
+		sql.Named("X-Presto-Progress-Callback", progressUpdater),
+		sql.Named("X-Presto-Progress-Callback-Period", progressUpdaterPeriod),
 	)
 	require.NoError(t, err, "Failed executing query")
 	assert.NotNil(t, rows)
@@ -404,7 +404,7 @@ func TestQueryColumns(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -822,7 +822,7 @@ func TestMaxGoPrecisionDateTime(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -928,7 +928,7 @@ func TestQueryCancellation(t *testing.T) {
 
 	t.Cleanup(ts.Close)
 
-	db, err := sql.Open("trino", ts.URL)
+	db, err := sql.Open("presto", ts.URL)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -946,7 +946,7 @@ func TestQueryFailure(t *testing.T) {
 
 	t.Cleanup(ts.Close)
 
-	db, err := sql.Open("trino", ts.URL)
+	db, err := sql.Open("presto", ts.URL)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -990,7 +990,7 @@ func TestFetchNoStackOverflow(t *testing.T) {
 		})
 	}))
 
-	db, err := sql.Open("trino", ts.URL)
+	db, err := sql.Open("presto", ts.URL)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -1018,7 +1018,7 @@ func TestSession(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -1051,13 +1051,13 @@ func TestSession(t *testing.T) {
 
 func TestUnsupportedHeader(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(trinoSetRoleHeader, "foo")
+		w.Header().Set(prestoSetRoleHeader, "foo")
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	t.Cleanup(ts.Close)
 
-	db, err := sql.Open("trino", ts.URL)
+	db, err := sql.Open("presto", ts.URL)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -1069,7 +1069,7 @@ func TestUnsupportedHeader(t *testing.T) {
 }
 
 func TestSSLCertPath(t *testing.T) {
-	db, err := sql.Open("trino", "https://localhost:9?SSLCertPath=/tmp/invalid_test.cert")
+	db, err := sql.Open("presto", "https://localhost:9?SSLCertPath=/tmp/invalid_test.cert")
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -1083,7 +1083,7 @@ func TestSSLCertPath(t *testing.T) {
 }
 
 func TestWithoutSSLCertPath(t *testing.T) {
-	db, err := sql.Open("trino", "https://localhost:9")
+	db, err := sql.Open("presto", "https://localhost:9")
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -1094,7 +1094,7 @@ func TestWithoutSSLCertPath(t *testing.T) {
 }
 
 func TestUnsupportedTransaction(t *testing.T) {
-	db, err := sql.Open("trino", "http://localhost:9")
+	db, err := sql.Open("presto", "http://localhost:9")
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -1448,33 +1448,33 @@ func TestTypeConversion(t *testing.T) {
 
 func TestSliceTypeConversion(t *testing.T) {
 	testcases := []struct {
-		GoType                          string
-		Scanner                         sql.Scanner
-		TrinoResponseUnmarshalledSample interface{}
-		TestScanner                     func(t *testing.T, s sql.Scanner, isValid bool)
+		GoType                           string
+		Scanner                          sql.Scanner
+		PrestoResponseUnmarshalledSample interface{}
+		TestScanner                      func(t *testing.T, s sql.Scanner, isValid bool)
 	}{
 		{
-			GoType:                          "[]bool",
-			Scanner:                         &NullSliceBool{},
-			TrinoResponseUnmarshalledSample: []interface{}{true},
+			GoType:                           "[]bool",
+			Scanner:                          &NullSliceBool{},
+			PrestoResponseUnmarshalledSample: []interface{}{true},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSliceBool)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[]string",
-			Scanner:                         &NullSliceString{},
-			TrinoResponseUnmarshalledSample: []interface{}{"hello"},
+			GoType:                           "[]string",
+			Scanner:                          &NullSliceString{},
+			PrestoResponseUnmarshalledSample: []interface{}{"hello"},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSliceString)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[]int64",
-			Scanner:                         &NullSliceInt64{},
-			TrinoResponseUnmarshalledSample: []interface{}{json.Number("1")},
+			GoType:                           "[]int64",
+			Scanner:                          &NullSliceInt64{},
+			PrestoResponseUnmarshalledSample: []interface{}{json.Number("1")},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSliceInt64)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
@@ -1482,27 +1482,27 @@ func TestSliceTypeConversion(t *testing.T) {
 		},
 
 		{
-			GoType:                          "[]float64",
-			Scanner:                         &NullSliceFloat64{},
-			TrinoResponseUnmarshalledSample: []interface{}{json.Number("1.0")},
+			GoType:                           "[]float64",
+			Scanner:                          &NullSliceFloat64{},
+			PrestoResponseUnmarshalledSample: []interface{}{json.Number("1.0")},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSliceFloat64)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[]time.Time",
-			Scanner:                         &NullSliceTime{},
-			TrinoResponseUnmarshalledSample: []interface{}{"2017-07-01"},
+			GoType:                           "[]time.Time",
+			Scanner:                          &NullSliceTime{},
+			PrestoResponseUnmarshalledSample: []interface{}{"2017-07-01"},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSliceTime)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[]map[string]interface{}",
-			Scanner:                         &NullSliceMap{},
-			TrinoResponseUnmarshalledSample: []interface{}{map[string]interface{}{"hello": "world"}},
+			GoType:                           "[]map[string]interface{}",
+			Scanner:                          &NullSliceMap{},
+			PrestoResponseUnmarshalledSample: []interface{}{map[string]interface{}{"hello": "world"}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSliceMap)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
@@ -1520,7 +1520,7 @@ func TestSliceTypeConversion(t *testing.T) {
 		})
 
 		t.Run(tc.GoType+":sample", func(t *testing.T) {
-			require.NoError(t, tc.Scanner.Scan(tc.TrinoResponseUnmarshalledSample))
+			require.NoError(t, tc.Scanner.Scan(tc.PrestoResponseUnmarshalledSample))
 			tc.TestScanner(t, tc.Scanner, true)
 			require.NoError(t, tc.Scanner.Scan(nil))
 			tc.TestScanner(t, tc.Scanner, false)
@@ -1530,60 +1530,60 @@ func TestSliceTypeConversion(t *testing.T) {
 
 func TestSlice2TypeConversion(t *testing.T) {
 	testcases := []struct {
-		GoType                          string
-		Scanner                         sql.Scanner
-		TrinoResponseUnmarshalledSample interface{}
-		TestScanner                     func(t *testing.T, s sql.Scanner, isValid bool)
+		GoType                           string
+		Scanner                          sql.Scanner
+		PrestoResponseUnmarshalledSample interface{}
+		TestScanner                      func(t *testing.T, s sql.Scanner, isValid bool)
 	}{
 		{
-			GoType:                          "[][]bool",
-			Scanner:                         &NullSlice2Bool{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{true}},
+			GoType:                           "[][]bool",
+			Scanner:                          &NullSlice2Bool{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{true}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice2Bool)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][]string",
-			Scanner:                         &NullSlice2String{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{"hello"}},
+			GoType:                           "[][]string",
+			Scanner:                          &NullSlice2String{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{"hello"}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice2String)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][]int64",
-			Scanner:                         &NullSlice2Int64{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{json.Number("1")}},
+			GoType:                           "[][]int64",
+			Scanner:                          &NullSlice2Int64{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{json.Number("1")}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice2Int64)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][]float64",
-			Scanner:                         &NullSlice2Float64{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{json.Number("1.0")}},
+			GoType:                           "[][]float64",
+			Scanner:                          &NullSlice2Float64{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{json.Number("1.0")}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice2Float64)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][]time.Time",
-			Scanner:                         &NullSlice2Time{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{"2017-07-01"}},
+			GoType:                           "[][]time.Time",
+			Scanner:                          &NullSlice2Time{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{"2017-07-01"}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice2Time)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][]map[string]interface{}",
-			Scanner:                         &NullSlice2Map{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{map[string]interface{}{"hello": "world"}}},
+			GoType:                           "[][]map[string]interface{}",
+			Scanner:                          &NullSlice2Map{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{map[string]interface{}{"hello": "world"}}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice2Map)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
@@ -1603,7 +1603,7 @@ func TestSlice2TypeConversion(t *testing.T) {
 		})
 
 		t.Run(tc.GoType+":sample", func(t *testing.T) {
-			require.NoError(t, tc.Scanner.Scan(tc.TrinoResponseUnmarshalledSample))
+			require.NoError(t, tc.Scanner.Scan(tc.PrestoResponseUnmarshalledSample))
 			tc.TestScanner(t, tc.Scanner, true)
 			require.NoError(t, tc.Scanner.Scan(nil))
 			tc.TestScanner(t, tc.Scanner, false)
@@ -1613,60 +1613,60 @@ func TestSlice2TypeConversion(t *testing.T) {
 
 func TestSlice3TypeConversion(t *testing.T) {
 	testcases := []struct {
-		GoType                          string
-		Scanner                         sql.Scanner
-		TrinoResponseUnmarshalledSample interface{}
-		TestScanner                     func(t *testing.T, s sql.Scanner, isValid bool)
+		GoType                           string
+		Scanner                          sql.Scanner
+		PrestoResponseUnmarshalledSample interface{}
+		TestScanner                      func(t *testing.T, s sql.Scanner, isValid bool)
 	}{
 		{
-			GoType:                          "[][][]bool",
-			Scanner:                         &NullSlice3Bool{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{true}}},
+			GoType:                           "[][][]bool",
+			Scanner:                          &NullSlice3Bool{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{true}}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice3Bool)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][][]string",
-			Scanner:                         &NullSlice3String{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{"hello"}}},
+			GoType:                           "[][][]string",
+			Scanner:                          &NullSlice3String{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{"hello"}}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice3String)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][][]int64",
-			Scanner:                         &NullSlice3Int64{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{json.Number("1")}}},
+			GoType:                           "[][][]int64",
+			Scanner:                          &NullSlice3Int64{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{json.Number("1")}}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice3Int64)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][][]float64",
-			Scanner:                         &NullSlice3Float64{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{json.Number("1.0")}}},
+			GoType:                           "[][][]float64",
+			Scanner:                          &NullSlice3Float64{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{json.Number("1.0")}}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice3Float64)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][][]time.Time",
-			Scanner:                         &NullSlice3Time{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{"2017-07-01"}}},
+			GoType:                           "[][][]time.Time",
+			Scanner:                          &NullSlice3Time{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{"2017-07-01"}}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice3Time)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
 			},
 		},
 		{
-			GoType:                          "[][][]map[string]interface{}",
-			Scanner:                         &NullSlice3Map{},
-			TrinoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{map[string]interface{}{"hello": "world"}}}},
+			GoType:                           "[][][]map[string]interface{}",
+			Scanner:                          &NullSlice3Map{},
+			PrestoResponseUnmarshalledSample: []interface{}{[]interface{}{[]interface{}{map[string]interface{}{"hello": "world"}}}},
 			TestScanner: func(t *testing.T, s sql.Scanner, isValid bool) {
 				v, _ := s.(*NullSlice3Map)
 				assert.Equal(t, isValid, v.Valid, "scanner failed")
@@ -1686,7 +1686,7 @@ func TestSlice3TypeConversion(t *testing.T) {
 		})
 
 		t.Run(tc.GoType+":sample", func(t *testing.T) {
-			require.NoError(t, tc.Scanner.Scan(tc.TrinoResponseUnmarshalledSample))
+			require.NoError(t, tc.Scanner.Scan(tc.PrestoResponseUnmarshalledSample))
 			tc.TestScanner(t, tc.Scanner, true)
 			require.NoError(t, tc.Scanner.Scan(nil))
 			tc.TestScanner(t, tc.Scanner, false)
@@ -1703,7 +1703,7 @@ func BenchmarkQuery(b *testing.B) {
 	dsn, err := c.FormatDSN()
 	require.NoError(b, err)
 
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	require.NoError(b, err)
 
 	b.Cleanup(func() {
@@ -1732,7 +1732,7 @@ func TestExec(t *testing.T) {
 	dsn, err := c.FormatDSN()
 	require.NoError(t, err)
 
-	db, err := sql.Open("trino", dsn)
+	db, err := sql.Open("presto", dsn)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -1748,7 +1748,7 @@ func TestExec(t *testing.T) {
 		789, "ghi", nil)
 	require.NoError(t, err, "Failed executing INSERT query")
 	_, err = result.LastInsertId()
-	assert.Error(t, err, "trino: operation not supported")
+	assert.Error(t, err, "presto: operation not supported")
 	numRows, err := result.RowsAffected()
 	require.NoError(t, err, "Failed checking rows affected")
 	assert.Equal(t, numRows, int64(3))
@@ -1759,9 +1759,9 @@ func TestExec(t *testing.T) {
 	expectedIds := []int{123, 456, 789}
 	expectedNames := []string{"abc", "def", "ghi"}
 	expectedOptionals := []sql.NullString{
-		sql.NullString{Valid: false},
-		sql.NullString{String: "present", Valid: true},
-		sql.NullString{Valid: false},
+		{Valid: false},
+		{String: "present", Valid: true},
+		{Valid: false},
 	}
 	actualIds := []int{}
 	actualNames := []string{}

@@ -1118,7 +1118,7 @@ type rowFieldName struct {
 
 type typeSignature struct {
 	RawType   string         `json:"rawType"`
-	Arguments []typeArgument `json:"arguments"`
+	Arguments []typeArgument `json:"typeArguments"`
 }
 
 type typeKind string

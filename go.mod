@@ -1,4 +1,4 @@
-module github.com/popsql/presto-go-client
+module github.com/timescale/presto-go-client
 
 go 1.17
 

@@ -560,6 +560,11 @@ func (e *ErrQueryFailed) Error() string {
 		e.StatusCode, http.StatusText(e.StatusCode), e.Reason)
 }
 
+// Unwrap implements the unwrap interface.
+func (e *ErrQueryFailed) Unwrap() error {
+	return e.Reason
+}
+
 func newErrQueryFailedFromResponse(resp *http.Response) *ErrQueryFailed {
 	const maxBytes = 8 * 1024
 	defer resp.Body.Close()

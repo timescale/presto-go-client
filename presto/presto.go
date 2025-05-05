@@ -70,7 +70,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"gopkg.in/jcmturner/gokrb5.v6/client"
 	"gopkg.in/jcmturner/gokrb5.v6/config"
@@ -96,9 +95,6 @@ var (
 
 	// ErrUnsupportedHeader indicates that the server response contains an unsupported header.
 	ErrUnsupportedHeader = errors.New("presto: server response contains an unsupported header")
-
-	// ErrInvalidResponseType indicates that the server returned an invalid type definition.
-	ErrInvalidResponseType = errors.New("presto: server response contains an invalid type")
 
 	// ErrInvalidProgressCallbackHeader indicates that server did not get valid headers for progress callback
 	ErrInvalidProgressCallbackHeader = errors.New("presto: both " + prestoProgressCallbackParam + " and " + prestoProgressCallbackPeriodParam + " must be set when using progress callback")
@@ -888,6 +884,7 @@ func (st *driverStmt) exec(ctx context.Context, args []driver.NamedValue) (*stmt
 				if resp == nil {
 					return
 				}
+
 				var qresp queryResponse
 				d := json.NewDecoder(resp.Body)
 				d.UseNumber()
@@ -1113,8 +1110,7 @@ type queryColumn struct {
 type queryData []interface{}
 
 type namedTypeSignature struct {
-	FieldName     rowFieldName  `json:"fieldName"`
-	TypeSignature typeSignature `json:"typeSignature"`
+	FieldName rowFieldName `json:"fieldName"`
 }
 
 type rowFieldName struct {
@@ -1123,15 +1119,15 @@ type rowFieldName struct {
 
 type typeSignature struct {
 	RawType   string         `json:"rawType"`
-	Arguments []typeArgument `json:"typeArguments"`
+	Arguments []typeArgument `json:"arguments"`
 }
 
 type typeKind string
 
 const (
-	KIND_TYPE       = typeKind("TYPE")
-	KIND_NAMED_TYPE = typeKind("NAMED_TYPE")
-	KIND_LONG       = typeKind("LONG")
+	KIND_TYPE       = typeKind("TYPE_SIGNATURE")
+	KIND_NAMED_TYPE = typeKind("NAMED_TYPE_SIGNATURE")
+	KIND_LONG       = typeKind("LONG_LITERAL")
 	KIND_VARIABLE   = typeKind("VARIABLE")
 )
 
@@ -1205,19 +1201,18 @@ func unmarshalArguments(signature *typeSignature) error {
 			payload = &(signature.Arguments[i].namedTypeSignature)
 		case KIND_LONG:
 			payload = &(signature.Arguments[i].long)
+		default:
+			return fmt.Errorf("unknown argument kind: %s", argument.Kind)
 		}
-		err := json.Unmarshal(argument.Value, payload)
-		if err != nil {
+		if err := json.Unmarshal(argument.Value, payload); err != nil {
 			return err
 		}
+
 		switch argument.Kind {
 		case KIND_TYPE:
-			err = unmarshalArguments(&(signature.Arguments[i].typeSignature))
-		case KIND_NAMED_TYPE:
-			err = unmarshalArguments(&(signature.Arguments[i].namedTypeSignature.TypeSignature))
-		}
-		if err != nil {
-			return err
+			if err := unmarshalArguments(&(signature.Arguments[i].typeSignature)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1307,30 +1302,18 @@ func newTypeConverter(typeName string, signature typeSignature) (*typeConverter,
 	}
 	switch signature.RawType {
 	case "char", "varchar":
-		if len(signature.Arguments) > 0 {
-			if signature.Arguments[0].Kind != KIND_LONG {
-				return nil, ErrInvalidResponseType
-			}
+		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
 			result.size = newOptionalInt64(signature.Arguments[0].long)
 		}
 	case "decimal":
-		if len(signature.Arguments) > 0 {
-			if signature.Arguments[0].Kind != KIND_LONG {
-				return nil, ErrInvalidResponseType
-			}
+		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
 			result.precision = newOptionalInt64(signature.Arguments[0].long)
 		}
-		if len(signature.Arguments) > 1 {
-			if signature.Arguments[1].Kind != KIND_LONG {
-				return nil, ErrInvalidResponseType
-			}
+		if len(signature.Arguments) > 1 && signature.Arguments[1].Kind == KIND_LONG {
 			result.scale = newOptionalInt64(signature.Arguments[1].long)
 		}
 	case "time", "time with time zone", "timestamp", "timestamp with time zone":
-		if len(signature.Arguments) > 0 {
-			if signature.Arguments[0].Kind != KIND_LONG {
-				return nil, ErrInvalidResponseType
-			}
+		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
 			result.precision = newOptionalInt64(signature.Arguments[0].long)
 		}
 	}
@@ -1344,8 +1327,6 @@ func getNestedTypes(types []string, signature typeSignature) []string {
 		switch signature.Arguments[0].Kind {
 		case KIND_TYPE:
 			types = getNestedTypes(types, signature.Arguments[0].typeSignature)
-		case KIND_NAMED_TYPE:
-			types = getNestedTypes(types, signature.Arguments[0].namedTypeSignature.TypeSignature)
 		}
 	}
 	return types
@@ -1356,7 +1337,11 @@ func getScanType(typeNames []string) (reflect.Type, error) {
 	switch typeNames[0] {
 	case "boolean":
 		v = sql.NullBool{}
-	case "json", "char", "varchar", "varbinary", "interval year to month", "interval day to second", "decimal", "ipaddress", "uuid", "unknown":
+	case "json", "char", "varchar", "varbinary",
+		"date", "time", "time with time zone", "timestamp", "timestamp with time zone",
+		"interval year to month", "interval day to second",
+		"decimal", "ipprefix", "ipaddress", "uuid", "unknown",
+		"map", "array", "row":
 		v = sql.NullString{}
 	case "tinyint", "smallint":
 		v = sql.NullInt32{}
@@ -1366,67 +1351,7 @@ func getScanType(typeNames []string) (reflect.Type, error) {
 		v = sql.NullInt64{}
 	case "real", "double":
 		v = sql.NullFloat64{}
-	case "date", "time", "time with time zone", "timestamp", "timestamp with time zone":
-		v = sql.NullTime{}
-	case "map":
-		v = NullMap{}
-	case "array":
-		if len(typeNames) <= 1 {
-			return nil, ErrInvalidResponseType
-		}
-		switch typeNames[1] {
-		case "boolean":
-			v = NullSliceBool{}
-		case "json", "char", "varchar", "varbinary", "interval year to month", "interval day to second", "decimal", "ipaddress", "uuid", "unknown":
-			v = NullSliceString{}
-		case "tinyint", "smallint", "integer", "bigint":
-			v = NullSliceInt64{}
-		case "real", "double":
-			v = NullSliceFloat64{}
-		case "date", "time", "time with time zone", "timestamp", "timestamp with time zone":
-			v = NullSliceTime{}
-		case "map":
-			v = NullSliceMap{}
-		case "array":
-			if len(typeNames) <= 2 {
-				return nil, ErrInvalidResponseType
-			}
-			switch typeNames[2] {
-			case "boolean":
-				v = NullSlice2Bool{}
-			case "json", "char", "varchar", "varbinary", "interval year to month", "interval day to second", "decimal", "ipaddress", "uuid", "unknown":
-				v = NullSlice2String{}
-			case "tinyint", "smallint", "integer", "bigint":
-				v = NullSlice2Int64{}
-			case "real", "double":
-				v = NullSlice2Float64{}
-			case "date", "time", "time with time zone", "timestamp", "timestamp with time zone":
-				v = NullSlice2Time{}
-			case "map":
-				v = NullSlice2Map{}
-			case "array":
-				if len(typeNames) <= 3 {
-					return nil, ErrInvalidResponseType
-				}
-				switch typeNames[3] {
-				case "boolean":
-					v = NullSlice3Bool{}
-				case "json", "char", "varchar", "varbinary", "interval year to month", "interval day to second", "decimal", "ipaddress", "uuid", "unknown":
-					v = NullSlice3String{}
-				case "tinyint", "smallint", "integer", "bigint":
-					v = NullSlice3Int64{}
-				case "real", "double":
-					v = NullSlice3Float64{}
-				case "date", "time", "time with time zone", "timestamp", "timestamp with time zone":
-					v = NullSlice3Time{}
-				case "map":
-					v = NullSlice3Map{}
-				}
-				// if this is a 4 or more dimensional array, scan type will be an empty interface
-			}
-		}
-	}
-	if v == nil {
+	default:
 		return reflect.TypeOf(new(interface{})).Elem(), nil
 	}
 	return reflect.TypeOf(v), nil
@@ -1441,7 +1366,10 @@ func (c *typeConverter) ConvertValue(v interface{}) (driver.Value, error) {
 			return nil, err
 		}
 		return vv.Bool, err
-	case "json", "char", "varchar", "varbinary", "interval year to month", "interval day to second", "decimal", "ipaddress", "uuid", "unknown":
+	case "json", "char", "varchar", "varbinary",
+		"date", "time", "time with time zone", "timestamp", "timestamp with time zone",
+		"interval year to month", "interval day to second",
+		"decimal", "ipprefix", "ipaddress", "uuid", "unknown":
 		vv, err := scanNullString(v)
 		if !vv.Valid {
 			return nil, err
@@ -1459,29 +1387,18 @@ func (c *typeConverter) ConvertValue(v interface{}) (driver.Value, error) {
 			return nil, err
 		}
 		return vv.Float64, err
-	case "date", "time", "time with time zone", "timestamp", "timestamp with time zone":
-		vv, err := scanNullTime(v)
-		if !vv.Valid {
-			return nil, err
-		}
-		return vv.Time, err
 	case "map":
 		if err := validateMap(v); err != nil {
 			return nil, err
 		}
 		return v, nil
-	case "array":
-		if err := validateSlice(v); err != nil {
-			return nil, err
-		}
-		return v, nil
-	case "row":
+	case "array", "row":
 		if err := validateSlice(v); err != nil {
 			return nil, err
 		}
 		return v, nil
 	default:
-		return nil, fmt.Errorf("type not supported: %q", c.typeName)
+		return v, nil
 	}
 }
 
@@ -1489,9 +1406,17 @@ func validateMap(v interface{}) error {
 	if v == nil {
 		return nil
 	}
-	if _, ok := v.(map[string]interface{}); !ok {
+
+	str, ok := v.(string)
+	if !ok {
 		return fmt.Errorf("cannot convert %v (%T) to map", v, v)
 	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &out); err != nil {
+		return fmt.Errorf("cannot convert %v (%T) to map", v, v)
+	}
+
 	return nil
 }
 
@@ -1499,9 +1424,17 @@ func validateSlice(v interface{}) error {
 	if v == nil {
 		return nil
 	}
-	if _, ok := v.([]interface{}); !ok {
+
+	str, ok := v.(string)
+	if !ok {
 		return fmt.Errorf("cannot convert %v (%T) to slice", v, v)
 	}
+
+	var out []interface{}
+	if err := json.Unmarshal([]byte(str), &out); err != nil {
+		return fmt.Errorf("cannot convert %v (%T) to slice", v, v)
+	}
+
 	return nil
 }
 
@@ -1517,93 +1450,6 @@ func scanNullBool(v interface{}) (sql.NullBool, error) {
 	return sql.NullBool{Valid: true, Bool: vv}, nil
 }
 
-// NullSliceBool represents a slice of bool that may be null.
-type NullSliceBool struct {
-	SliceBool []sql.NullBool
-	Valid     bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSliceBool) Scan(value interface{}) error {
-	if value == nil {
-		s.SliceBool, s.Valid = []sql.NullBool{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to []bool", value, value)
-	}
-	slice := make([]sql.NullBool, len(vs))
-	for i := range vs {
-		v, err := scanNullBool(vs[i])
-		if err != nil {
-			return err
-		}
-		slice[i] = v
-	}
-	s.SliceBool = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice2Bool represents a two-dimensional slice of bool that may be null.
-type NullSlice2Bool struct {
-	Slice2Bool [][]sql.NullBool
-	Valid      bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice2Bool) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice2Bool, s.Valid = [][]sql.NullBool{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][]bool", value, value)
-	}
-	slice := make([][]sql.NullBool, len(vs))
-	for i := range vs {
-		var ss NullSliceBool
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.SliceBool
-	}
-	s.Slice2Bool = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice3Bool implements a three-dimensional slice of bool that may be null.
-type NullSlice3Bool struct {
-	Slice3Bool [][][]sql.NullBool
-	Valid      bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice3Bool) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice3Bool, s.Valid = [][][]sql.NullBool{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][][]bool", value, value)
-	}
-	slice := make([][][]sql.NullBool, len(vs))
-	for i := range vs {
-		var ss NullSlice2Bool
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.Slice2Bool
-	}
-	s.Slice3Bool = slice
-	s.Valid = true
-	return nil
-}
-
 func scanNullString(v interface{}) (sql.NullString, error) {
 	if v == nil {
 		return sql.NullString{}, nil
@@ -1614,93 +1460,6 @@ func scanNullString(v interface{}) (sql.NullString, error) {
 			fmt.Errorf("cannot convert %v (%T) to string", v, v)
 	}
 	return sql.NullString{Valid: true, String: vv}, nil
-}
-
-// NullSliceString represents a slice of string that may be null.
-type NullSliceString struct {
-	SliceString []sql.NullString
-	Valid       bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSliceString) Scan(value interface{}) error {
-	if value == nil {
-		s.SliceString, s.Valid = []sql.NullString{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to []string", value, value)
-	}
-	slice := make([]sql.NullString, len(vs))
-	for i := range vs {
-		v, err := scanNullString(vs[i])
-		if err != nil {
-			return err
-		}
-		slice[i] = v
-	}
-	s.SliceString = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice2String represents a two-dimensional slice of string that may be null.
-type NullSlice2String struct {
-	Slice2String [][]sql.NullString
-	Valid        bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice2String) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice2String, s.Valid = [][]sql.NullString{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][]string", value, value)
-	}
-	slice := make([][]sql.NullString, len(vs))
-	for i := range vs {
-		var ss NullSliceString
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.SliceString
-	}
-	s.Slice2String = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice3String implements a three-dimensional slice of string that may be null.
-type NullSlice3String struct {
-	Slice3String [][][]sql.NullString
-	Valid        bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice3String) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice3String, s.Valid = [][][]sql.NullString{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][][]string", value, value)
-	}
-	slice := make([][][]sql.NullString, len(vs))
-	for i := range vs {
-		var ss NullSlice2String
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.Slice2String
-	}
-	s.Slice3String = slice
-	s.Valid = true
-	return nil
 }
 
 func scanNullInt64(v interface{}) (sql.NullInt64, error) {
@@ -1718,93 +1477,6 @@ func scanNullInt64(v interface{}) (sql.NullInt64, error) {
 			fmt.Errorf("cannot convert %v (%T) to int64", v, v)
 	}
 	return sql.NullInt64{Valid: true, Int64: vv}, nil
-}
-
-// NullSliceInt64 represents a slice of int64 that may be null.
-type NullSliceInt64 struct {
-	SliceInt64 []sql.NullInt64
-	Valid      bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSliceInt64) Scan(value interface{}) error {
-	if value == nil {
-		s.SliceInt64, s.Valid = []sql.NullInt64{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to []int64", value, value)
-	}
-	slice := make([]sql.NullInt64, len(vs))
-	for i := range vs {
-		v, err := scanNullInt64(vs[i])
-		if err != nil {
-			return err
-		}
-		slice[i] = v
-	}
-	s.SliceInt64 = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice2Int64 represents a two-dimensional slice of int64 that may be null.
-type NullSlice2Int64 struct {
-	Slice2Int64 [][]sql.NullInt64
-	Valid       bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice2Int64) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice2Int64, s.Valid = [][]sql.NullInt64{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][]int64", value, value)
-	}
-	slice := make([][]sql.NullInt64, len(vs))
-	for i := range vs {
-		var ss NullSliceInt64
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.SliceInt64
-	}
-	s.Slice2Int64 = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice3Int64 implements a three-dimensional slice of int64 that may be null.
-type NullSlice3Int64 struct {
-	Slice3Int64 [][][]sql.NullInt64
-	Valid       bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice3Int64) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice3Int64, s.Valid = [][][]sql.NullInt64{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][][]int64", value, value)
-	}
-	slice := make([][][]sql.NullInt64, len(vs))
-	for i := range vs {
-		var ss NullSlice2Int64
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.Slice2Int64
-	}
-	s.Slice3Int64 = slice
-	s.Valid = true
-	return nil
 }
 
 func scanNullFloat64(v interface{}) (sql.NullFloat64, error) {
@@ -1837,398 +1509,6 @@ func scanNullFloat64(v interface{}) (sql.NullFloat64, error) {
 		}
 		return sql.NullFloat64{Valid: true, Float64: vFloat}, nil
 	}
-}
-
-// NullSliceFloat64 represents a slice of float64 that may be null.
-type NullSliceFloat64 struct {
-	SliceFloat64 []sql.NullFloat64
-	Valid        bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSliceFloat64) Scan(value interface{}) error {
-	if value == nil {
-		s.SliceFloat64, s.Valid = []sql.NullFloat64{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to []float64", value, value)
-	}
-	slice := make([]sql.NullFloat64, len(vs))
-	for i := range vs {
-		v, err := scanNullFloat64(vs[i])
-		if err != nil {
-			return err
-		}
-		slice[i] = v
-	}
-	s.SliceFloat64 = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice2Float64 represents a two-dimensional slice of float64 that may be null.
-type NullSlice2Float64 struct {
-	Slice2Float64 [][]sql.NullFloat64
-	Valid         bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice2Float64) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice2Float64, s.Valid = [][]sql.NullFloat64{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][]float64", value, value)
-	}
-	slice := make([][]sql.NullFloat64, len(vs))
-	for i := range vs {
-		var ss NullSliceFloat64
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.SliceFloat64
-	}
-	s.Slice2Float64 = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice3Float64 represents a three-dimensional slice of float64 that may be null.
-type NullSlice3Float64 struct {
-	Slice3Float64 [][][]sql.NullFloat64
-	Valid         bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice3Float64) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice3Float64, s.Valid = [][][]sql.NullFloat64{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][][]float64", value, value)
-	}
-	slice := make([][][]sql.NullFloat64, len(vs))
-	for i := range vs {
-		var ss NullSlice2Float64
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.Slice2Float64
-	}
-	s.Slice3Float64 = slice
-	s.Valid = true
-	return nil
-}
-
-// Layout for time and timestamp WITHOUT time zone.
-// Presto can support up to 12 digits sub second precision, but Go only 9.
-// (Requires X-Presto-Client-Capabilities: PARAMETRIC_DATETIME)
-var timeLayouts = []string{
-	"2006-01-02",
-	"15:04:05.999999999",
-	"2006-01-02 15:04:05.999999999",
-}
-
-// Layout for time and timestamp WITH time zone.
-// Presto can support up to 12 digits sub second precision, but Go only 9.
-// (Requires X-Presto-Client-Capabilities: PARAMETRIC_DATETIME)
-var timeLayoutsTZ = []string{
-	"15:04:05.999999999 -07:00",
-	"2006-01-02 15:04:05.999999999 -07:00",
-}
-
-func scanNullTime(v interface{}) (NullTime, error) {
-	if v == nil {
-		return NullTime{}, nil
-	}
-	vv, ok := v.(string)
-	if !ok {
-		return NullTime{}, fmt.Errorf("cannot convert %v (%T) to time string", v, v)
-	}
-	vparts := strings.Split(vv, " ")
-	if len(vparts) > 1 && !unicode.IsDigit(rune(vparts[len(vparts)-1][0])) {
-		return parseNullTimeWithLocation(vv)
-	}
-	// Time literals may not have spaces before the timezone.
-	if strings.ContainsRune(vv, '+') {
-		return parseNullTimeWithLocation(strings.Replace(vv, "+", " +", 1))
-	}
-	hyphenCount := strings.Count(vv, "-")
-	// We need to ensure we don't treat the hyphens in dates as the minus offset sign.
-	// So if there's only one hyphen or more than 2, we have a negative offset.
-	if hyphenCount == 1 || hyphenCount > 2 {
-		// We add a space before the last hyphen to parse properly.
-		i := strings.LastIndex(vv, "-")
-		timestamp := vv[:i] + strings.Replace(vv[i:], "-", " -", 1)
-		return parseNullTimeWithLocation(timestamp)
-	}
-	return parseNullTime(vv)
-}
-
-func parseNullTime(v string) (NullTime, error) {
-	var t time.Time
-	var err error
-	for _, layout := range timeLayouts {
-		t, err = time.ParseInLocation(layout, v, time.Local)
-		if err == nil {
-			return NullTime{Valid: true, Time: t}, nil
-		}
-	}
-	return NullTime{}, err
-}
-
-func parseNullTimeWithLocation(v string) (NullTime, error) {
-	idx := strings.LastIndex(v, " ")
-	if idx == -1 {
-		return NullTime{}, fmt.Errorf("cannot convert %v (%T) to time+zone", v, v)
-	}
-	stamp, location := v[:idx], v[idx+1:]
-	var t time.Time
-	var err error
-	// Try offset timezones.
-	if strings.HasPrefix(location, "+") || strings.HasPrefix(location, "-") {
-		for _, layout := range timeLayoutsTZ {
-			t, err = time.Parse(layout, v)
-			if err == nil {
-				return NullTime{Valid: true, Time: t}, nil
-			}
-		}
-		return NullTime{}, err
-	}
-	loc, err := time.LoadLocation(location)
-	// Not a named location.
-	if err != nil {
-		return NullTime{}, fmt.Errorf("cannot load timezone %q: %v", location, err)
-	}
-
-	for _, layout := range timeLayouts {
-		t, err = time.ParseInLocation(layout, stamp, loc)
-		if err == nil {
-			return NullTime{Valid: true, Time: t}, nil
-		}
-	}
-	return NullTime{}, err
-}
-
-// NullTime represents a time.Time value that can be null.
-// The NullTime supports Presto's Date, Time and Timestamp data types,
-// with or without time zone.
-type NullTime struct {
-	Time  time.Time
-	Valid bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullTime) Scan(value interface{}) error {
-	if value == nil {
-		s.Time, s.Valid = time.Time{}, false
-		return nil
-	}
-	switch t := value.(type) {
-	case time.Time:
-		s.Time, s.Valid = t, true
-	case NullTime:
-		*s = t
-	}
-	return nil
-}
-
-// NullSliceTime represents a slice of time.Time that may be null.
-type NullSliceTime struct {
-	SliceTime []NullTime
-	Valid     bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSliceTime) Scan(value interface{}) error {
-	if value == nil {
-		s.SliceTime, s.Valid = []NullTime{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to []time.Time", value, value)
-	}
-	slice := make([]NullTime, len(vs))
-	for i := range vs {
-		v, err := scanNullTime(vs[i])
-		if err != nil {
-			return err
-		}
-		slice[i] = v
-	}
-	s.SliceTime = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice2Time represents a two-dimensional slice of time.Time that may be null.
-type NullSlice2Time struct {
-	Slice2Time [][]NullTime
-	Valid      bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice2Time) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice2Time, s.Valid = [][]NullTime{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][]time.Time", value, value)
-	}
-	slice := make([][]NullTime, len(vs))
-	for i := range vs {
-		var ss NullSliceTime
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.SliceTime
-	}
-	s.Slice2Time = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice3Time represents a three-dimensional slice of time.Time that may be null.
-type NullSlice3Time struct {
-	Slice3Time [][][]NullTime
-	Valid      bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice3Time) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice3Time, s.Valid = [][][]NullTime{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][][]time.Time", value, value)
-	}
-	slice := make([][][]NullTime, len(vs))
-	for i := range vs {
-		var ss NullSlice2Time
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.Slice2Time
-	}
-	s.Slice3Time = slice
-	s.Valid = true
-	return nil
-}
-
-// NullMap represents a map type that may be null.
-type NullMap struct {
-	Map   map[string]interface{}
-	Valid bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (m *NullMap) Scan(v interface{}) error {
-	if v == nil {
-		m.Map, m.Valid = map[string]interface{}{}, false
-		return nil
-	}
-	m.Map, m.Valid = v.(map[string]interface{})
-	return nil
-}
-
-// NullSliceMap represents a slice of NullMap that may be null.
-type NullSliceMap struct {
-	SliceMap []NullMap
-	Valid    bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSliceMap) Scan(value interface{}) error {
-	if value == nil {
-		s.SliceMap, s.Valid = []NullMap{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to []NullMap", value, value)
-	}
-	slice := make([]NullMap, len(vs))
-	for i := range vs {
-		if err := validateMap(vs[i]); err != nil {
-			return fmt.Errorf("cannot convert %v (%T) to []NullMap", value, value)
-		}
-		m := NullMap{}
-		// this scan can never fail
-		_ = m.Scan(vs[i])
-		slice[i] = m
-	}
-	s.SliceMap = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice2Map represents a two-dimensional slice of NullMap that may be null.
-type NullSlice2Map struct {
-	Slice2Map [][]NullMap
-	Valid     bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice2Map) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice2Map, s.Valid = [][]NullMap{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][]NullMap", value, value)
-	}
-	slice := make([][]NullMap, len(vs))
-	for i := range vs {
-		var ss NullSliceMap
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.SliceMap
-	}
-	s.Slice2Map = slice
-	s.Valid = true
-	return nil
-}
-
-// NullSlice3Map represents a three-dimensional slice of NullMap that may be null.
-type NullSlice3Map struct {
-	Slice3Map [][][]NullMap
-	Valid     bool
-}
-
-// Scan implements the sql.Scanner interface.
-func (s *NullSlice3Map) Scan(value interface{}) error {
-	if value == nil {
-		s.Slice3Map, s.Valid = [][][]NullMap{}, false
-		return nil
-	}
-	vs, ok := value.([]interface{})
-	if !ok {
-		return fmt.Errorf("presto: cannot convert %v (%T) to [][][]NullMap", value, value)
-	}
-	slice := make([][][]NullMap, len(vs))
-	for i := range vs {
-		var ss NullSlice2Map
-		if err := ss.Scan(vs[i]); err != nil {
-			return err
-		}
-		slice[i] = ss.Slice2Map
-	}
-	s.Slice3Map = slice
-	s.Valid = true
-	return nil
 }
 
 type QueryProgressInfo struct {

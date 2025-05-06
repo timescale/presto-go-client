@@ -1292,6 +1292,19 @@ func newOptionalInt64(value int64) optionalInt64 {
 	return optionalInt64{value: value, hasValue: true}
 }
 
+func argIsLong(signature typeSignature, argIdx int) bool {
+	if len(signature.Arguments) <= argIdx {
+		return false
+	}
+
+	switch signature.Arguments[argIdx].Kind {
+	case KIND_LONG, KIND_LONG_LITERAL:
+		return true
+	}
+
+	return false
+}
+
 func newTypeConverter(typeName string, signature typeSignature) (*typeConverter, error) {
 	result := &typeConverter{
 		typeName:   typeName,
@@ -1304,18 +1317,18 @@ func newTypeConverter(typeName string, signature typeSignature) (*typeConverter,
 	}
 	switch signature.RawType {
 	case "char", "varchar":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG_LITERAL {
+		if argIsLong(signature, 0) {
 			result.size = newOptionalInt64(signature.Arguments[0].long)
 		}
 	case "decimal":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG_LITERAL {
+		if argIsLong(signature, 0) {
 			result.precision = newOptionalInt64(signature.Arguments[0].long)
 		}
-		if len(signature.Arguments) > 1 && signature.Arguments[1].Kind == KIND_LONG_LITERAL {
+		if argIsLong(signature, 1) {
 			result.scale = newOptionalInt64(signature.Arguments[1].long)
 		}
 	case "time", "time with time zone", "timestamp", "timestamp with time zone":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG_LITERAL {
+		if argIsLong(signature, 0) {
 			result.precision = newOptionalInt64(signature.Arguments[0].long)
 		}
 	}

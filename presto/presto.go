@@ -1125,10 +1125,12 @@ type typeSignature struct {
 type typeKind string
 
 const (
-	KIND_TYPE       = typeKind("TYPE_SIGNATURE")
-	KIND_NAMED_TYPE = typeKind("NAMED_TYPE_SIGNATURE")
-	KIND_LONG       = typeKind("LONG_LITERAL")
-	KIND_VARIABLE   = typeKind("VARIABLE")
+	KIND_TYPE                 = typeKind("TYPE")                 // Trino
+	KIND_TYPE_SIGNATURE       = typeKind("TYPE_SIGNATURE")       // Presto
+	KIND_NAMED_TYPE           = typeKind("NAMED_TYPE")           // Trino
+	KIND_NAMED_TYPE_SIGNATURE = typeKind("NAMED_TYPE_SIGNATURE") // Presto
+	KIND_LONG                 = typeKind("LONG")                 // Trino
+	KIND_LONG_LITERAL         = typeKind("LONG_LITERAL")         // Presto
 )
 
 type typeArgument struct {
@@ -1195,11 +1197,11 @@ func unmarshalArguments(signature *typeSignature) error {
 	for i, argument := range signature.Arguments {
 		var payload interface{}
 		switch argument.Kind {
-		case KIND_TYPE:
+		case KIND_TYPE, KIND_TYPE_SIGNATURE:
 			payload = &(signature.Arguments[i].typeSignature)
-		case KIND_NAMED_TYPE:
+		case KIND_NAMED_TYPE, KIND_NAMED_TYPE_SIGNATURE:
 			payload = &(signature.Arguments[i].namedTypeSignature)
-		case KIND_LONG:
+		case KIND_LONG, KIND_LONG_LITERAL:
 			payload = &(signature.Arguments[i].long)
 		default:
 			return fmt.Errorf("unknown argument kind: %s", argument.Kind)
@@ -1209,7 +1211,7 @@ func unmarshalArguments(signature *typeSignature) error {
 		}
 
 		switch argument.Kind {
-		case KIND_TYPE:
+		case KIND_TYPE, KIND_TYPE_SIGNATURE:
 			if err := unmarshalArguments(&(signature.Arguments[i].typeSignature)); err != nil {
 				return err
 			}
@@ -1302,18 +1304,18 @@ func newTypeConverter(typeName string, signature typeSignature) (*typeConverter,
 	}
 	switch signature.RawType {
 	case "char", "varchar":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
+		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG_LITERAL {
 			result.size = newOptionalInt64(signature.Arguments[0].long)
 		}
 	case "decimal":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
+		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG_LITERAL {
 			result.precision = newOptionalInt64(signature.Arguments[0].long)
 		}
-		if len(signature.Arguments) > 1 && signature.Arguments[1].Kind == KIND_LONG {
+		if len(signature.Arguments) > 1 && signature.Arguments[1].Kind == KIND_LONG_LITERAL {
 			result.scale = newOptionalInt64(signature.Arguments[1].long)
 		}
 	case "time", "time with time zone", "timestamp", "timestamp with time zone":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
+		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG_LITERAL {
 			result.precision = newOptionalInt64(signature.Arguments[0].long)
 		}
 	}
@@ -1325,7 +1327,7 @@ func getNestedTypes(types []string, signature typeSignature) []string {
 	types = append(types, signature.RawType)
 	if len(signature.Arguments) == 1 {
 		switch signature.Arguments[0].Kind {
-		case KIND_TYPE:
+		case KIND_TYPE_SIGNATURE:
 			types = getNestedTypes(types, signature.Arguments[0].typeSignature)
 		}
 	}

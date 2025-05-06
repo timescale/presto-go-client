@@ -1409,6 +1409,12 @@ func validateMap(v interface{}) error {
 		return nil
 	}
 
+	// Trino returns maps as a JSON object
+	if _, ok := v.(map[string]interface{}); ok {
+		return nil
+	}
+
+	// Presto returns maps as a string containing a serialized JSON object
 	str, ok := v.(string)
 	if !ok {
 		return fmt.Errorf("cannot convert %v (%T) to map", v, v)
@@ -1427,6 +1433,12 @@ func validateSlice(v interface{}) error {
 		return nil
 	}
 
+	// Trino returns maps as a JSON array
+	if _, ok := v.([]interface{}); ok {
+		return nil
+	}
+
+	// Presto returns maps as a string containing a serialized JSON array
 	str, ok := v.(string)
 	if !ok {
 		return fmt.Errorf("cannot convert %v (%T) to slice", v, v)

@@ -10,12 +10,15 @@ per the docs [here](https://trino.io/blog/2021/01/04/migrating-from-prestosql-to
 
 Note that this driver aims to be compliant with the [database/sql](https://pkg.go.dev/database/sql)
 package interface. In particular, only valid [driver.Value](https://pkg.go.dev/database/sql/driver#Value)
-types are returned (unlike the upstream Trino driver, which returns
-`map[string]interface{}` for `MAP` types and `[]interface{}` for `ARRAY`/`ROW`
-types). The driver therefore behaves as documented in the
+types are returned. The driver therefore behaves as documented in the
 [Rows.Scan](https://pkg.go.dev/database/sql#Rows.Scan) documentation.
+In particular, `MAP`, `ARRAY`, and `ROW` types are all returned as strings
+containing serialized JSON. This differs from the upstream Trino driver, which
+returns `map[string]interface{}` for `MAP` types and `[]interface{}` for
+`ARRAY`/`ROW` types (and is therefore non-compliant with the `driver.Value`
+interface requirements).
 
-Note that all date and time types are returned as strings, to maintain the
+Note that all date and time types are also returned as strings to maintain the
 precise format in which they're returned from Presto/Trino itself.
 
 ## License

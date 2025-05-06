@@ -1390,66 +1390,76 @@ func (c *typeConverter) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return vv.Float64, err
 	case "map":
-		if err := validateMap(v); err != nil {
+		vv, err := scanMap(v)
+		if err != nil {
 			return nil, err
 		}
-		return v, nil
+		return vv, nil
 	case "array", "row":
-		if err := validateSlice(v); err != nil {
+		vv, err := scanSlice(v)
+		if err != nil {
 			return nil, err
 		}
-		return v, nil
+		return vv, nil
 	default:
 		return v, nil
 	}
 }
 
-func validateMap(v interface{}) error {
+func scanMap(v interface{}) (string, error) {
 	if v == nil {
-		return nil
+		return "", nil
 	}
 
 	// Trino returns maps as a JSON object
-	if _, ok := v.(map[string]interface{}); ok {
-		return nil
+	if m, ok := v.(map[string]interface{}); ok {
+		b, err := json.Marshal(m)
+		if err != nil {
+			return "", fmt.Errorf("error marshaling map to JSON: %w", err)
+		}
+		return string(b), nil
 	}
 
 	// Presto returns maps as a string containing a serialized JSON object
 	str, ok := v.(string)
 	if !ok {
-		return fmt.Errorf("cannot convert %v (%T) to map", v, v)
+		return "", fmt.Errorf("cannot convert %v (%T) to map", v, v)
 	}
 
-	var out map[string]interface{}
-	if err := json.Unmarshal([]byte(str), &out); err != nil {
-		return fmt.Errorf("cannot convert %v (%T) to map", v, v)
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &m); err != nil {
+		return "", fmt.Errorf("cannot convert %v (%T) to map", v, v)
 	}
 
-	return nil
+	return str, nil
 }
 
-func validateSlice(v interface{}) error {
+func scanSlice(v interface{}) (string, error) {
 	if v == nil {
-		return nil
+		return "", nil
 	}
 
 	// Trino returns maps as a JSON array
-	if _, ok := v.([]interface{}); ok {
-		return nil
+	if a, ok := v.([]interface{}); ok {
+		b, err := json.Marshal(a)
+		if err != nil {
+			return "", fmt.Errorf("error marshaling array to JSON: %w", err)
+		}
+		return string(b), nil
 	}
 
 	// Presto returns maps as a string containing a serialized JSON array
 	str, ok := v.(string)
 	if !ok {
-		return fmt.Errorf("cannot convert %v (%T) to slice", v, v)
+		return "", fmt.Errorf("cannot convert %v (%T) to slice", v, v)
 	}
 
-	var out []interface{}
-	if err := json.Unmarshal([]byte(str), &out); err != nil {
-		return fmt.Errorf("cannot convert %v (%T) to slice", v, v)
+	var a []interface{}
+	if err := json.Unmarshal([]byte(str), &a); err != nil {
+		return "", fmt.Errorf("cannot convert %v (%T) to slice", v, v)
 	}
 
-	return nil
+	return str, nil
 }
 
 func scanNullBool(v interface{}) (sql.NullBool, error) {

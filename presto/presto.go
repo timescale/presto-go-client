@@ -1125,10 +1125,12 @@ type typeSignature struct {
 type typeKind string
 
 const (
-	KIND_TYPE       = typeKind("TYPE_SIGNATURE")
-	KIND_NAMED_TYPE = typeKind("NAMED_TYPE_SIGNATURE")
-	KIND_LONG       = typeKind("LONG_LITERAL")
-	KIND_VARIABLE   = typeKind("VARIABLE")
+	KIND_TYPE                 = typeKind("TYPE")                 // Trino
+	KIND_TYPE_SIGNATURE       = typeKind("TYPE_SIGNATURE")       // Presto
+	KIND_NAMED_TYPE           = typeKind("NAMED_TYPE")           // Trino
+	KIND_NAMED_TYPE_SIGNATURE = typeKind("NAMED_TYPE_SIGNATURE") // Presto
+	KIND_LONG                 = typeKind("LONG")                 // Trino
+	KIND_LONG_LITERAL         = typeKind("LONG_LITERAL")         // Presto
 )
 
 type typeArgument struct {
@@ -1195,11 +1197,11 @@ func unmarshalArguments(signature *typeSignature) error {
 	for i, argument := range signature.Arguments {
 		var payload interface{}
 		switch argument.Kind {
-		case KIND_TYPE:
+		case KIND_TYPE, KIND_TYPE_SIGNATURE:
 			payload = &(signature.Arguments[i].typeSignature)
-		case KIND_NAMED_TYPE:
+		case KIND_NAMED_TYPE, KIND_NAMED_TYPE_SIGNATURE:
 			payload = &(signature.Arguments[i].namedTypeSignature)
-		case KIND_LONG:
+		case KIND_LONG, KIND_LONG_LITERAL:
 			payload = &(signature.Arguments[i].long)
 		default:
 			return fmt.Errorf("unknown argument kind: %s", argument.Kind)
@@ -1209,7 +1211,7 @@ func unmarshalArguments(signature *typeSignature) error {
 		}
 
 		switch argument.Kind {
-		case KIND_TYPE:
+		case KIND_TYPE, KIND_TYPE_SIGNATURE:
 			if err := unmarshalArguments(&(signature.Arguments[i].typeSignature)); err != nil {
 				return err
 			}
@@ -1290,6 +1292,19 @@ func newOptionalInt64(value int64) optionalInt64 {
 	return optionalInt64{value: value, hasValue: true}
 }
 
+func argIsLong(signature typeSignature, argIdx int) bool {
+	if len(signature.Arguments) <= argIdx {
+		return false
+	}
+
+	switch signature.Arguments[argIdx].Kind {
+	case KIND_LONG, KIND_LONG_LITERAL:
+		return true
+	}
+
+	return false
+}
+
 func newTypeConverter(typeName string, signature typeSignature) (*typeConverter, error) {
 	result := &typeConverter{
 		typeName:   typeName,
@@ -1302,18 +1317,18 @@ func newTypeConverter(typeName string, signature typeSignature) (*typeConverter,
 	}
 	switch signature.RawType {
 	case "char", "varchar":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
+		if argIsLong(signature, 0) {
 			result.size = newOptionalInt64(signature.Arguments[0].long)
 		}
 	case "decimal":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
+		if argIsLong(signature, 0) {
 			result.precision = newOptionalInt64(signature.Arguments[0].long)
 		}
-		if len(signature.Arguments) > 1 && signature.Arguments[1].Kind == KIND_LONG {
+		if argIsLong(signature, 1) {
 			result.scale = newOptionalInt64(signature.Arguments[1].long)
 		}
 	case "time", "time with time zone", "timestamp", "timestamp with time zone":
-		if len(signature.Arguments) > 0 && signature.Arguments[0].Kind == KIND_LONG {
+		if argIsLong(signature, 0) {
 			result.precision = newOptionalInt64(signature.Arguments[0].long)
 		}
 	}
@@ -1325,7 +1340,7 @@ func getNestedTypes(types []string, signature typeSignature) []string {
 	types = append(types, signature.RawType)
 	if len(signature.Arguments) == 1 {
 		switch signature.Arguments[0].Kind {
-		case KIND_TYPE:
+		case KIND_TYPE_SIGNATURE:
 			types = getNestedTypes(types, signature.Arguments[0].typeSignature)
 		}
 	}
@@ -1388,54 +1403,76 @@ func (c *typeConverter) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return vv.Float64, err
 	case "map":
-		if err := validateMap(v); err != nil {
+		vv, err := scanMap(v)
+		if err != nil {
 			return nil, err
 		}
-		return v, nil
+		return vv, nil
 	case "array", "row":
-		if err := validateSlice(v); err != nil {
+		vv, err := scanSlice(v)
+		if err != nil {
 			return nil, err
 		}
-		return v, nil
+		return vv, nil
 	default:
 		return v, nil
 	}
 }
 
-func validateMap(v interface{}) error {
+func scanMap(v interface{}) (string, error) {
 	if v == nil {
-		return nil
+		return "", nil
 	}
 
+	// Trino returns maps as a JSON object
+	if m, ok := v.(map[string]interface{}); ok {
+		b, err := json.Marshal(m)
+		if err != nil {
+			return "", fmt.Errorf("error marshaling map to JSON: %w", err)
+		}
+		return string(b), nil
+	}
+
+	// Presto returns maps as a string containing a serialized JSON object
 	str, ok := v.(string)
 	if !ok {
-		return fmt.Errorf("cannot convert %v (%T) to map", v, v)
+		return "", fmt.Errorf("cannot convert %v (%T) to map", v, v)
 	}
 
-	var out map[string]interface{}
-	if err := json.Unmarshal([]byte(str), &out); err != nil {
-		return fmt.Errorf("cannot convert %v (%T) to map", v, v)
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &m); err != nil {
+		return "", fmt.Errorf("cannot convert %v (%T) to map", v, v)
 	}
 
-	return nil
+	return str, nil
 }
 
-func validateSlice(v interface{}) error {
+func scanSlice(v interface{}) (string, error) {
 	if v == nil {
-		return nil
+		return "", nil
 	}
 
+	// Trino returns maps as a JSON array
+	if a, ok := v.([]interface{}); ok {
+		b, err := json.Marshal(a)
+		if err != nil {
+			return "", fmt.Errorf("error marshaling array to JSON: %w", err)
+		}
+		return string(b), nil
+	}
+
+	// Presto returns maps as a string containing a serialized JSON array
 	str, ok := v.(string)
 	if !ok {
-		return fmt.Errorf("cannot convert %v (%T) to slice", v, v)
+		return "", fmt.Errorf("cannot convert %v (%T) to slice", v, v)
 	}
 
-	var out []interface{}
-	if err := json.Unmarshal([]byte(str), &out); err != nil {
-		return fmt.Errorf("cannot convert %v (%T) to slice", v, v)
+	var a []interface{}
+	if err := json.Unmarshal([]byte(str), &a); err != nil {
+		return "", fmt.Errorf("cannot convert %v (%T) to slice", v, v)
 	}
 
-	return nil
+	return str, nil
 }
 
 func scanNullBool(v interface{}) (sql.NullBool, error) {

@@ -1340,7 +1340,7 @@ func getNestedTypes(types []string, signature typeSignature) []string {
 	types = append(types, signature.RawType)
 	if len(signature.Arguments) == 1 {
 		switch signature.Arguments[0].Kind {
-		case KIND_TYPE_SIGNATURE:
+		case KIND_TYPE, KIND_TYPE_SIGNATURE:
 			types = getNestedTypes(types, signature.Arguments[0].typeSignature)
 		}
 	}

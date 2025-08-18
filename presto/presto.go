@@ -680,13 +680,13 @@ func (st *driverStmt) CheckNamedValue(arg *driver.NamedValue) error {
 }
 
 type stmtResponse struct {
-	ID          string    `json:"id"`
-	InfoURI     string    `json:"infoUri"`
-	NextURI     string    `json:"nextUri"`
-	Stats       stmtStats `json:"stats"`
-	Error       stmtError `json:"error"`
-	UpdateType  string    `json:"updateType"`
-	UpdateCount int64     `json:"updateCount"`
+	ID          string      `json:"id"`
+	InfoURI     string      `json:"infoUri"`
+	NextURI     string      `json:"nextUri"`
+	Stats       stmtStats   `json:"stats"`
+	Error       PrestoError `json:"error"`
+	UpdateType  string      `json:"updateType"`
+	UpdateCount int64       `json:"updateCount"`
 }
 
 type stmtStats struct {
@@ -706,27 +706,27 @@ type stmtStats struct {
 	ProgressPercentage float32   `json:"progressPercentage"`
 }
 
-type stmtError struct {
-	Message       string               `json:"message"`
-	ErrorName     string               `json:"errorName"`
-	ErrorCode     int                  `json:"errorCode"`
-	ErrorLocation stmtErrorLocation    `json:"errorLocation"`
-	FailureInfo   stmtErrorFailureInfo `json:"failureInfo"`
+type PrestoError struct {
+	Message       string        `json:"message"`
+	ErrorName     string        `json:"errorName"`
+	ErrorCode     int           `json:"errorCode"`
+	ErrorLocation ErrorLocation `json:"errorLocation"`
+	FailureInfo   FailureInfo   `json:"failureInfo"`
 	// Other fields omitted
 }
 
-type stmtErrorLocation struct {
+type ErrorLocation struct {
 	LineNumber   int `json:"lineNumber"`
 	ColumnNumber int `json:"columnNumber"`
 }
 
-type stmtErrorFailureInfo struct {
+type FailureInfo struct {
 	Type string `json:"type"`
 	// Other fields omitted
 }
 
-func (e stmtError) Error() string {
-	return e.FailureInfo.Type + ": " + e.Message
+func (e PrestoError) Error() string {
+	return e.ErrorName + ": " + e.Message
 }
 
 type stmtStage struct {
@@ -1096,7 +1096,7 @@ type queryResponse struct {
 	Columns          []queryColumn `json:"columns"`
 	Data             []queryData   `json:"data"`
 	Stats            stmtStats     `json:"stats"`
-	Error            stmtError     `json:"error"`
+	Error            PrestoError   `json:"error"`
 	UpdateType       string        `json:"updateType"`
 	UpdateCount      int64         `json:"updateCount"`
 }
@@ -1145,7 +1145,7 @@ type typeArgument struct {
 	long int64
 }
 
-func handleResponseError(status int, respErr stmtError) error {
+func handleResponseError(status int, respErr PrestoError) error {
 	switch respErr.ErrorName {
 	case "":
 		return nil
